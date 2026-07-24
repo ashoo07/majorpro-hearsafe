@@ -115,7 +115,7 @@ export function Navbar() {
             ) : (
               // ─── Not logged in: show sign up + login ────────────────────────
               <>
-                <Link href="/signup" className="flex items-center gap-1 hover:underline text-sm">
+                <Link href="/sign-up" className="flex items-center gap-1 hover:underline text-sm">
                   <UserPlus className="h-4 w-4" />
                   Sign Up
                 </Link>

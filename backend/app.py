@@ -9,6 +9,9 @@ import os
 
 app = FastAPI()
 
+# Global cache for the model
+_cached_model = None
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +20,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+def load_model_on_startup():
+    """Load the model once on app startup to cache it"""
+    global _cached_model
+    try:
+        if os.path.exists("hearsafe_rf.pkl"):
+            _cached_model = joblib.load("hearsafe_rf.pkl")
+            print("✅ Model cached successfully on startup")
+        else:
+            print("⚠️ Model file not found, will use rule engine")
+    except Exception as e:
+        print(f"❌ Error caching model on startup: {e}")
 
 # ============================================
 # MODEL CONFIGURATION - FIXED VERSION
@@ -159,17 +175,12 @@ def validate_ml_prediction(ehfa_mean, ml_prediction):
     return ml_prediction
 
 def load_model():
-    """Load the trained model with error handling"""
-    try:
-        if os.path.exists(MODEL_PATH):
-            model = joblib.load(MODEL_PATH)
-            print(f"✅ Model loaded successfully from {MODEL_PATH}")
-            return model
-        else:
-            print(f"⚠️ Model file {MODEL_PATH} not found, using rule engine")
-            return None
-    except Exception as e:
-        print(f"❌ Error loading model: {e}")
+    """Return the cached model or None"""
+    global _cached_model
+    if _cached_model is not None:
+        return _cached_model
+    else:
+        print("⚠️ Model not cached, using rule engine")
         return None
 
 # ============================
@@ -190,7 +201,19 @@ def predict(data: dict):
         volume = data["volume_level"]
         noisy_env = data["noisy_environment"]
         events = data["events_per_month"]
-        thresholds = data["thresholds"]
+        
+        # Handle both single thresholds array and left/right thresholds
+        if "thresholds" in data:
+            thresholds = data["thresholds"]
+        elif "left_thresholds" in data and "right_thresholds" in data:
+            # Average left and right thresholds
+            left = data["left_thresholds"]
+            right = data["right_thresholds"]
+            thresholds = [round((l + r) / 2) for l, r in zip(left, right)]
+            print(f"📊 Left thresholds:  {left}")
+            print(f"📊 Right thresholds: {right}")
+        else:
+            raise ValueError("Missing thresholds data (expected 'thresholds' or 'left_thresholds'+'right_thresholds')")
 
 # ========== PRESBYCUSIS CORRECTION ==========
         corrected_thresholds = apply_presbycusis_correction(thresholds, age, sex)
